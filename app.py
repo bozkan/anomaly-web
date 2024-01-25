@@ -8,12 +8,14 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from anomalib.deploy import OpenVINOInferencer
 from anomalib.data.utils import read_image
+from threading import Thread
 import shutil
 import os
 import zipfile
 
 app = Flask(__name__)
-CORS(app)
+# Configure CORS
+CORS(app, resources={r"/*": {"origins": "http://localhost:8080"}})
 
 def train_anomaly_model(dataset_path):
     # Prepare Dataset
