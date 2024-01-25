@@ -15,7 +15,7 @@ import zipfile
 
 app = Flask(__name__)
 # Configure CORS
-CORS(app, resources={r"/*": {"origins": "http://localhost:8080"}})
+CORS(app)
 
 def train_anomaly_model(dataset_path):
     # Prepare Dataset

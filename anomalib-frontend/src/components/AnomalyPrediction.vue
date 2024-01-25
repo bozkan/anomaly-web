@@ -27,7 +27,12 @@ export default {
       try {
         const response = await axios.post(
           "http://localhost:5000/predict",
-          formData
+          formData,
+          {
+            headers: {
+              "Content-Type": "multipart/form-data",
+            },
+          }
         );
         this.anomalyRate = response.data.anomaly_rate;
       } catch (error) {
