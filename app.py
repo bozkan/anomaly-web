@@ -1,6 +1,6 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from pathlib import Path
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from anomalib.models import Padim
 from anomalib.data.folder import Folder
 from anomalib.data.task_type import TaskType
@@ -8,19 +8,36 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from anomalib.deploy import OpenVINOInferencer
 from anomalib.data.utils import read_image
+from anomalib.post_processing import NormalizationMethod, ThresholdMethod
+from anomalib.utils.callbacks import (
+    MetricsConfigurationCallback,
+    MinMaxNormalizationCallback,
+    PostProcessingConfigurationCallback,
+)
+from anomalib.utils.callbacks.export import ExportCallback, ExportMode
 from threading import Thread
+from pathlib import Path
 import shutil
-import os
 import zipfile
+import os
 
-app = Flask(__name__)
-# Configure CORS
-CORS(app)
+app = FastAPI()
 
-def train_anomaly_model(dataset_path):
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+def train_anomaly_model(zip_filename: str):
+    dataset_path = Path.cwd() / "dataset" / zip_filename.replace(".zip", "")
+
     # Prepare Dataset
     datamodule = Folder(
-        root=Path(dataset_path),
+        root=dataset_path,
         normal_dir="normal",
         abnormal_dir="abnormal",
         normal_split_ratio=0.2,
@@ -41,11 +58,26 @@ def train_anomaly_model(dataset_path):
 
     # Prepare Callbacks
     callbacks = [
-        ModelCheckpoint(
-            mode="max",
-            monitor="image_AUROC",
-        ),
-    ]
+      MetricsConfigurationCallback(
+          task=TaskType.CLASSIFICATION,
+          image_metrics=["AUROC"],
+      ),
+      ModelCheckpoint(
+          mode="max",
+          monitor="image_AUROC",
+      ),
+      PostProcessingConfigurationCallback(
+          normalization_method=NormalizationMethod.MIN_MAX,
+          threshold_method=ThresholdMethod.ADAPTIVE,
+      ),
+      MinMaxNormalizationCallback(),
+      ExportCallback(
+          input_size=(256, 256),
+          dirpath=str(Path.cwd()),
+          filename="model",
+          export_mode=ExportMode.OPENVINO,
+      ),
+  ]
 
     # Create Trainer and Train the Model
     trainer = Trainer(
@@ -61,46 +93,54 @@ def train_anomaly_model(dataset_path):
     )
     trainer.fit(model=model, datamodule=datamodule)
 
-    # Save model for inference
-    model_path = Path.cwd() / "model.ckpt"
-    trainer.save_checkpoint(model_path)
 
-@app.route('/train', methods=['POST'])
-def train():
-    file = request.files['file']
-    dataset_path = Path.cwd() / "dataset"
-    dataset_zip_path = dataset_path / 'dataset.zip'
-    
-    # Save and Extract Dataset
-    file.save(dataset_zip_path)
-    with zipfile.ZipFile(dataset_zip_path, 'r') as zip_ref:
-        zip_ref.extractall(dataset_path)
-    os.remove(dataset_zip_path)
+@app.post('/train')
+async def train(file: UploadFile = File(...)):
+  
+    try:
+        # Use the original filename for the ZIP file
+        zip_filename = file.filename
 
-    # Start training in a separate thread
-    thread = Thread(target=train_anomaly_model, args=(dataset_path,))
-    thread.start()
-    return jsonify({'message': 'Training started'}), 200
+        # Start training in a separate thread
+        thread = Thread(target=train_anomaly_model, args=(zip_filename,))
+        thread.start()
 
-@app.route('/predict', methods=['POST'])
-def predict():
-    file = request.files['file']
-    image_path = Path.cwd() / "temp_image.jpg"
-    file.save(image_path)
+        return JSONResponse(content={'message': 'Training started'})
+    except Exception as e:  
+        print(f"An error occurred: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post('/predict')
+async def predict(file: UploadFile = File(...)):
+    # Get the original filename of the uploaded image
+    image_filename = file.filename
+
+    # Use the original filename as the image path
+    image_path = Path.cwd() / image_filename
+
+    with open(image_path, 'wb') as buffer:
+        shutil.copyfileobj(file.file, buffer)
 
     # Load model and perform inference
-    model_path = Path.cwd() / "model.ckpt"
+    openvino_model_path = Path.cwd() / "weights" / "openvino" / "model.bin"
+    metadata_path = Path.cwd() / "weights" / "openvino" / "metadata.json"
+
     inferencer = OpenVINOInferencer(
-        path=model_path,
+        path=openvino_model_path,
+        metadata=metadata_path,
         device="CPU",
     )
+
     image = read_image(str(image_path))
     predictions = inferencer.predict(image=image)
-    
-    # Assume predictions contain anomaly score (customize as needed)
-    anomaly_score = predictions.get('score', 0.5)
 
-    return jsonify({'anomaly_rate': anomaly_score}), 200
+    # Access the anomaly score directly
+    anomaly_score = predictions.anomaly_score
+
+    return JSONResponse(content={'anomaly_rate': anomaly_score})
+
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    import uvicorn
+    uvicorn.run(app, host='0.0.0.0', port=8000)

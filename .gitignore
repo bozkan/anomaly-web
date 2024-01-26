@@ -1,2 +1,7 @@
 .history
 .DS_Store
+
+dataset
+lightning_logs
+weights
+cache
