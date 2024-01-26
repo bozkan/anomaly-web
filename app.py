@@ -18,7 +18,6 @@ from anomalib.utils.callbacks.export import ExportCallback, ExportMode
 from threading import Thread
 from pathlib import Path
 import shutil
-import zipfile
 import os
 
 app = FastAPI()
@@ -33,7 +32,13 @@ app.add_middleware(
 )
 
 def train_anomaly_model(zip_filename: str):
+    
+    # Define the path to the dataset folder
     dataset_path = Path.cwd() / "dataset" / zip_filename.replace(".zip", "")
+
+    # Create the dataset folder if it doesn't exist
+    if not os.path.exists(dataset_path):
+        os.makedirs(dataset_path)
 
     # Prepare Dataset
     datamodule = Folder(
