@@ -24,7 +24,7 @@ export default {
 
       try {
         const response = await axios.post(
-          "http://localhost:5000/train",
+          "http://localhost:8000/train",
           formData,
           {
             headers: {
