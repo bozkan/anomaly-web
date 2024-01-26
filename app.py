@@ -1,3 +1,4 @@
+import zipfile
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,14 +32,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def train_anomaly_model(zip_filename: str):
-    
-    # Define the path to the dataset folder
-    dataset_path = Path.cwd() / "dataset" / zip_filename.replace(".zip", "")
-
-    # Create the dataset folder if it doesn't exist
-    if not os.path.exists(dataset_path):
-        os.makedirs(dataset_path)
+def train_anomaly_model(dataset_path: str):
 
     # Prepare Dataset
     datamodule = Folder(
@@ -63,26 +57,26 @@ def train_anomaly_model(zip_filename: str):
 
     # Prepare Callbacks
     callbacks = [
-      MetricsConfigurationCallback(
-          task=TaskType.CLASSIFICATION,
-          image_metrics=["AUROC"],
-      ),
-      ModelCheckpoint(
-          mode="max",
-          monitor="image_AUROC",
-      ),
-      PostProcessingConfigurationCallback(
-          normalization_method=NormalizationMethod.MIN_MAX,
-          threshold_method=ThresholdMethod.ADAPTIVE,
-      ),
-      MinMaxNormalizationCallback(),
-      ExportCallback(
-          input_size=(256, 256),
-          dirpath=str(Path.cwd()),
-          filename="model",
-          export_mode=ExportMode.OPENVINO,
-      ),
-  ]
+        MetricsConfigurationCallback(
+            task=TaskType.CLASSIFICATION,
+            image_metrics=["AUROC"],
+        ),
+        ModelCheckpoint(
+            mode="max",
+            monitor="image_AUROC",
+        ),
+        PostProcessingConfigurationCallback(
+            normalization_method=NormalizationMethod.MIN_MAX,
+            threshold_method=ThresholdMethod.ADAPTIVE,
+        ),
+        MinMaxNormalizationCallback(),
+        ExportCallback(
+            input_size=(256, 256),
+            dirpath=str(Path.cwd()),
+            filename="model",
+            export_mode=ExportMode.OPENVINO,
+        ),
+    ]
 
     # Create Trainer and Train the Model
     trainer = Trainer(
@@ -103,11 +97,24 @@ def train_anomaly_model(zip_filename: str):
 async def train(file: UploadFile = File(...)):
   
     try:
-        # Use the original filename for the ZIP file
-        zip_filename = file.filename
+        data_folder_path = Path.cwd() / "dataset"
+        dataset_zip_path = data_folder_path / file.filename
+        dataset_path = data_folder_path / file.filename.replace(".zip", "")
+        
+        # Create the dataset folder if it doesn't exist
+        if not os.path.exists(dataset_path):
+            os.makedirs(dataset_path)
+
+        # Save and Extract Dataset
+        with open(dataset_zip_path, 'wb') as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        with zipfile.ZipFile(dataset_zip_path, 'r') as zip_ref:
+            zip_ref.extractall(data_folder_path)
+        os.remove(dataset_zip_path)
 
         # Start training in a separate thread
-        thread = Thread(target=train_anomaly_model, args=(zip_filename,))
+        thread = Thread(target=train_anomaly_model, args=(dataset_path,))
         thread.start()
 
         return JSONResponse(content={'message': 'Training started'})
