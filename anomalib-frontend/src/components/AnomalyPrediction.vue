@@ -6,6 +6,13 @@
   </div>
 </template>
 
+<style>
+/* Import your CSS file here */
+@import '@/assets/css/main.css';
+
+/* Your component-specific styles here */
+</style>
+
 <script>
 import axios from "axios";
 
