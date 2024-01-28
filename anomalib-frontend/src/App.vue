@@ -1,18 +1,18 @@
 <template>
   <div>
-    <nav>
-      <ul>
-        <li><router-link to="/training">Training</router-link></li>
-        <li><router-link to="/prediction">Prediction</router-link></li>
-      </ul>
-    </nav>
+    <NavBar />
     <router-view></router-view>
   </div>
 </template>
 
 <script>
+import NavBar from "@/components/NavBar.vue";
+
 export default {
   name: "App",
+  components: {
+    NavBar,
+  },
 };
 </script>
 

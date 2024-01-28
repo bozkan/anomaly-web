@@ -5,10 +5,10 @@ module.exports = defineConfig({
   css: {
     loaderOptions: {
       postcss: {
-        plugins: [
-          require("tailwindcss"),
-          require("autoprefixer"),
-        ],
+        postcssOptions: {
+          plugins: [require("tailwindcss"), require("autoprefixer")],
+        },
+        sourceMap: true, // Enable source maps if needed
       },
     },
   },

@@ -35,7 +35,8 @@ app.add_middleware(
 def train_anomaly_model(dataset_path: str):
 
     # Prepare Dataset
-    datamodule = Folder(
+    datamodule =
+    Folder(
         root=dataset_path,
         normal_dir="normal",
         abnormal_dir="abnormal",
