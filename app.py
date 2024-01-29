@@ -148,7 +148,7 @@ async def predict(file: UploadFile = File(...)):
     predictions = inferencer.predict(image=image)
 
     # Access the anomaly score directly
-    anomaly_score = predictions.anomaly_score
+    anomaly_score = predictions.pred_score
 
     return JSONResponse(content={'anomaly_rate': anomaly_score})
 
